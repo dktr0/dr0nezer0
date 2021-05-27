@@ -1,0 +1,100 @@
+##JSoLang dr0neZer0
+
+{
+
+  function addPitches(x,y) {
+    var z = [];
+    for(var a=0;a<x.length;a++) {
+      for(var b=0;b<y.length;b++) {
+        z.push(x[a] + y[b]);
+      }
+    }
+    return z;
+  }
+
+  function subtractPitches(x,y) {
+    var z = [];
+    for(var a=0;a<x.length;a++) {
+      for(var b=0;b<y.length;b++) {
+        z.push(x[a] - y[b]);
+      }
+    }
+    return z;
+  }
+
+  function showArray(x) { return "[" + x.join(",") + "]"; }
+
+  function showPitches(x) {
+    // add slightly detuned, reversed version of pitches for audio only
+    var y = [...x];
+    y.reverse();
+    for(var n=0;n<y.length;n++){
+      y[n] = y[n] + 0.01;
+    }
+    return showArray(x.concat(y));
+  }
+
+  // x is an array of pitches
+  function punctualProgram(x) {
+    if(x.length == 0) {
+      return "0 >> video <> 10; 0 >> audio <> 10;"
+    }
+    var o1mult=0;
+    if(x.length >= 2) o1mult=1;
+    var o2mult=0;
+    if(x.length >= 3) o2mult=1;
+    var o1n = 2;
+    if(x.length >= 4) o1n=4;
+    var o2n = 2;
+    if(x.length >= 5) o2n=5;
+    return "pAudio << " + showPitches(x) + ";\n" +
+    "pVideo << " + showArray(x) + ";\n" +
+    "r << linlin [0,1] [0.025,0.75] $ fract $ pVideo / 36;\n" +
+    "a << fx ** 2 + fy ** 2;\n" +
+    "t << linlin [20,90] [0.006,0.002] pVideo;\n" +
+    "h << fract $ mono $ saw ((midicps pVideo)/4096) + fx;\n" +
+    "o0 << (mono $ abs (a - r) < t) * hsvrgb [h,1,1];\n" +
+    "o1 << spin (sin 0.01 * 0.02) (tile " + o1n + " o0) * " + o1mult + ";\n" +
+    "o2 << spin (sin 0.009 * 0.02) (tile " + o2n + " o1) * " + o2mult + ";\n" +
+    "o << max o0 $ max o1 o2;\n" +
+    "f << fb (fxy * (1.00 ~~ 1.1 $ fft $ abs fy)) * 0.95;\n" +
+    "max o (gate 0.001 f) >> video <> 4.5;\n" +
+    "lpf (saw $ midicps pAudio) 2000 1 * (-10) db >> audio <> 4.5;"
+  }
+}
+
+main = whitespace x:pitchExpression { return "##punctual\n" + punctualProgram(x); }
+
+pitchExpression =
+  x:simplePitches "+" whitespace y:pitchExpression { return addPitches(x,y); }
+  / x:simplePitches "-" whitespace y:pitchExpression { return subtractPitches(x,y); }
+  / simplePitches
+
+simplePitches = x:float { return [x] } / floatArray
+
+floatArray =
+  "[" whitespace "]" whitespace { return []; }
+  / "[" xs:buildFloatArray "]" whitespace { return xs; }
+
+buildFloatArray =
+  left:float "," right:buildFloatArray { var x = right; x.unshift(left); return x; }
+  / x:float { return [x] }
+
+float = whitespace x:(float1 / float2 / float3) whitespace { return x; }
+
+float1 = minus:"-"? leftDigits:[0-9]+ "." rightDigits:[0-9]* {
+  if(minus=="-")minus=-1; else minus=1;
+  return parseFloat(leftDigits.join("")+"."+rightDigits.join(""),10)*minus;
+}
+
+float2 = minus:"-"? leftDigits:[0-9]* "." rightDigits:[0-9]+ {
+  if(minus=="-")minus=-1; else minus=1;
+  return parseFloat(leftDigits.join("")+"."+rightDigits.join(""),10)*minus;
+}
+
+float3 = minus:"-"? digits:[0-9]+ {
+  if(minus=="-")minus=-1; else minus=1;
+  return parseFloat(digits.join(""),10)*minus;
+}
+
+whitespace = (" " / "\n" / "\r" / "\t")*
